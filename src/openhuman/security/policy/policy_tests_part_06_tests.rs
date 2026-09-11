@@ -20,7 +20,10 @@ async fn validate_path_caches_canonical_workspace_root() {
     let r1 = policy.validate_path(file.to_str().unwrap()).await.unwrap();
     let cached = policy.canonical_workspace.get().unwrap().clone();
     for _ in 0..5 {
-        assert_eq!(policy.validate_path(file.to_str().unwrap()).await.unwrap(), r1);
+        assert_eq!(
+            policy.validate_path(file.to_str().unwrap()).await.unwrap(),
+            r1
+        );
         assert_eq!(policy.canonical_workspace.get(), Some(&cached));
     }
 }
@@ -30,7 +33,9 @@ async fn validate_path_caches_canonical_workspace_root() {
 async fn workspace_root_sync_hydrates_and_shares_the_async_cache() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_path_buf();
-    let expected = workspace.canonicalize().unwrap_or_else(|_| workspace.clone());
+    let expected = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.clone());
     let policy = SecurityPolicy {
         workspace_dir: workspace,
         action_dir: tmp.path().to_path_buf(),
@@ -68,6 +73,9 @@ async fn validate_parent_path_uses_same_cache_as_validate_path() {
         .unwrap();
     let cached = policy.canonical_workspace.get().unwrap().clone();
     std::fs::write(workspace.join("hi.txt"), "x").unwrap();
-    policy.validate_path(workspace.join("hi.txt").to_str().unwrap()).await.unwrap();
+    policy
+        .validate_path(workspace.join("hi.txt").to_str().unwrap())
+        .await
+        .unwrap();
     assert_eq!(policy.canonical_workspace.get(), Some(&cached));
 }
