@@ -182,7 +182,9 @@ fn learning_subscriber_registration_is_idempotent_after_success() {
 fn domain_subscriber_registration_wrapper_uses_the_global_bus() {
     use crate::core::all::DomainGroup;
 
-    crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
+    crate::core::bus::init()
+        .await
+        .expect("bus init");
     assert!(group_first_time(DomainGroup::Media));
     assert!(!group_first_time(DomainGroup::Media));
 }
