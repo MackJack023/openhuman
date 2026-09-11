@@ -289,6 +289,25 @@ async fn validate_parent_path_does_not_let_parent_trusted_root_create_workspace_
     assert!(err.contains(WORKSPACE_MISSING_MARKER), "err: {err}");
 }
 
+#[tokio::test]
+async fn validate_parent_path_preserves_protected_root_diagnosis_when_workspace_missing() {
+    let workspace = std::path::PathBuf::from("/etc/missing-openhuman-workspace");
+    let policy = SecurityPolicy {
+        workspace_dir: workspace,
+        action_dir: "/etc/missing-openhuman-workspace".into(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+
+    let err = policy
+        .validate_parent_path("newfile.txt")
+        .await
+        .expect_err("protected roots must remain forbidden");
+    assert!(err.contains("protected") || err.contains("escapes workspace"), "err: {err}");
+    assert!(!err.contains(WORKSPACE_MISSING_MARKER), "err: {err}");
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn validate_parent_path_blocks_symlinked_parent_dir() {

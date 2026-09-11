@@ -319,19 +319,6 @@ impl SecurityPolicy {
             self.action_dir.join(&expanded)
         };
 
-        // A missing workspace is a configuration/startup condition, not a
-        // path-traversal attempt. Keep the write boundary fail-closed, but
-        // only classify targets that are actually beneath that workspace. A
-        // separate action root may remain usable through its own trusted-root
-        // grant, while an unrelated untrusted target should keep its normal
-        // containment diagnosis.
-        if !self.workspace_dir.is_dir() && self.is_path_under_workspace(&full_path) {
-            return Err(format!(
-                "{POLICY_BLOCKED_MARKER} {WORKSPACE_MISSING_MARKER} Workspace directory does not exist: {}. Nothing can be written until it is created; this is not a path-traversal refusal.",
-                self.workspace_dir.display()
-            ));
-        }
-
         let parent = full_path
             .parent()
             .ok_or_else(|| format!("Invalid path (no parent): {path}"))?;
@@ -359,6 +346,17 @@ impl SecurityPolicy {
             return Err(format!(
                 "{POLICY_BLOCKED_MARKER} Resolved parent path escapes workspace: {}",
                 canonical_ancestor.display()
+            ));
+        }
+
+        // Classify a missing workspace only after protected-root and resolved
+        // containment checks. A missing child under ~/.ssh or /etc must keep
+        // its unconditional protected-path diagnosis rather than suggesting
+        // that creating it would make the write valid.
+        if !self.workspace_dir.is_dir() && self.is_path_under_workspace(&full_path) {
+            return Err(format!(
+                "{POLICY_BLOCKED_MARKER} {WORKSPACE_MISSING_MARKER} Workspace directory does not exist: {}. Nothing can be written until it is created; this is not a path-traversal refusal.",
+                self.workspace_dir.display()
             ));
         }
 
