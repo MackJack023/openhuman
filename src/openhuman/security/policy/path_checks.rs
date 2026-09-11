@@ -326,6 +326,12 @@ impl SecurityPolicy {
             .file_name()
             .ok_or_else(|| format!("Invalid path (no filename): {path}"))?;
 
+        // Check the complete lexical target before falling back to an existing
+        // ancestor. This preserves protected-path diagnostics when a missing
+        // workspace or another nonexistent suffix is below a protected root.
+        let workspace_root = self.workspace_root().await;
+        self.check_resolved_against_forbidden(&full_path, &workspace_root)?;
+
         // Walk up to the deepest existing ancestor so we can canonicalize without
         // requiring the full parent path to exist yet. This catches symlink escapes
         // in existing path components even when deeper dirs are not created yet.
@@ -349,10 +355,9 @@ impl SecurityPolicy {
             ));
         }
 
-        // Classify a missing workspace only after protected-root and resolved
-        // containment checks. A missing child under ~/.ssh or /etc must keep
-        // its unconditional protected-path diagnosis rather than suggesting
-        // that creating it would make the write valid.
+        // Classify a missing workspace after protected-path checks, but before
+        // ancestor containment: the existing ancestor may be the workspace's
+        // parent, which would otherwise produce a misleading escape diagnosis.
         if !self.workspace_dir.is_dir() && self.is_path_under_workspace(&full_path) {
             return Err(format!(
                 "{POLICY_BLOCKED_MARKER} {WORKSPACE_MISSING_MARKER} Workspace directory does not exist: {}. Nothing can be written until it is created; this is not a path-traversal refusal.",
@@ -369,7 +374,6 @@ impl SecurityPolicy {
         let resolved_parent = canonical_ancestor.join(relative_suffix);
         let result = resolved_parent.join(file_name);
 
-        let workspace_root = self.workspace_root().await;
         self.check_resolved_against_forbidden(&canonical_ancestor, &workspace_root)?;
         self.check_resolved_against_forbidden(&result, &workspace_root)?;
         self.check_cross_profile(&result)?;
