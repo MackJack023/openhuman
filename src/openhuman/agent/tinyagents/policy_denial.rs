@@ -243,3 +243,4 @@ fn raise_tier_workaround(
 
 #[cfg(test)]
 #[path = "policy_denial_tests.rs"]
+mod tests;
