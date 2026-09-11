@@ -214,10 +214,7 @@ impl SecurityPolicy {
             return self.workspace_dir.clone();
         };
         let _ = self.canonical_workspace.set(canonical.clone());
-        self.canonical_workspace
-            .get()
-            .cloned()
-            .unwrap_or(canonical)
+        self.canonical_workspace.get().cloned().unwrap_or(canonical)
     }
 
     /// Synchronous counterpart to [`workspace_root`], hydrating the **same**
