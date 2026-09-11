@@ -1968,6 +1968,34 @@ fn group_first_time(group: crate::core::all::DomainGroup) -> bool {
         crate::core::bus::BUS.is_initialised(),
     )
 }
+
+/// Consume the learning-subscriber token only when the global event bus is
+/// ready. Learning has a separate token from the Agent group because both
+/// registration blocks must run exactly once.
+fn learning_first_time_when_bus_ready(completed: &std::sync::Mutex<bool>, bus_ready: bool) -> bool {
+    if !bus_ready {
+        log::warn!(
+            "[event_bus] deferred Agent learning subscriber registration - bus not initialized"
+        );
+        return false;
+    }
+
+    let mut completed = completed
+        .lock()
+        .expect("learning-subscriber registry lock poisoned");
+    if *completed {
+        false
+    } else {
+        *completed = true;
+        true
+    }
+}
+
+fn learning_first_time() -> bool {
+    static DONE: std::sync::OnceLock<std::sync::Mutex<bool>> = std::sync::OnceLock::new();
+    learning_first_time_when_bus_ready(
+        DONE.get_or_init(|| std::sync::Mutex::new(false)),
+        crate::core::bus::BUS.is_initialised(),
     )
 }
 
