@@ -332,6 +332,16 @@ impl SecurityPolicy {
         let workspace_root = self.workspace_root().await;
         self.check_resolved_against_forbidden(&full_path, &workspace_root)?;
 
+        // Classify a missing workspace after protected-path checks, but before
+        // ancestor containment: the existing ancestor may be the workspace's
+        // parent, which would otherwise produce a misleading escape diagnosis.
+        if !self.workspace_dir.is_dir() && self.is_path_under_workspace(&full_path) {
+            return Err(format!(
+                "{POLICY_BLOCKED_MARKER} {WORKSPACE_MISSING_MARKER} Workspace directory does not exist: {}. Nothing can be written until it is created; this is not a path-traversal refusal.",
+                self.workspace_dir.display()
+            ));
+        }
+
         // Walk up to the deepest existing ancestor so we can canonicalize without
         // requiring the full parent path to exist yet. This catches symlink escapes
         // in existing path components even when deeper dirs are not created yet.
@@ -352,16 +362,6 @@ impl SecurityPolicy {
             return Err(format!(
                 "{POLICY_BLOCKED_MARKER} Resolved parent path escapes workspace: {}",
                 canonical_ancestor.display()
-            ));
-        }
-
-        // Classify a missing workspace after protected-path checks, but before
-        // ancestor containment: the existing ancestor may be the workspace's
-        // parent, which would otherwise produce a misleading escape diagnosis.
-        if !self.workspace_dir.is_dir() && self.is_path_under_workspace(&full_path) {
-            return Err(format!(
-                "{POLICY_BLOCKED_MARKER} {WORKSPACE_MISSING_MARKER} Workspace directory does not exist: {}. Nothing can be written until it is created; this is not a path-traversal refusal.",
-                self.workspace_dir.display()
             ));
         }
 
