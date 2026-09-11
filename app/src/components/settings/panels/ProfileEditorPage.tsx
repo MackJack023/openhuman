@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LuX } from 'react-icons/lu';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
+import { errorMessage } from '../../../lib/errorMessage';
 import { useT } from '../../../lib/i18n/I18nContext';
 import { selectAgentProfiles, upsertAgentProfile } from '../../../store/agentProfileSlice';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
@@ -29,7 +30,6 @@ import {
   SettingsTextField,
 } from '../controls';
 import SettingsPanel from '../layout/SettingsPanel';
-import { settingsNavState } from '../modal/settingsOverlay';
 
 const MODEL_HINTS = ['hint:reasoning', 'hint:chat', 'hint:agentic', 'hint:coding'];
 
@@ -53,10 +53,7 @@ const ProfileEditorPage = () => {
   const dispatch = useAppDispatch();
   const { id: routeId } = useParams<{ id: string }>();
   const profiles = useAppSelector(selectAgentProfiles);
-  const backToList = useCallback(
-    () => navigate('/settings/profiles', settingsNavState(location)),
-    [navigate, location]
-  );
+  const backToList = useCallback(() => navigate('/settings/profiles'), [navigate, location]);
   const isCreate = !routeId;
 
   const existing = useMemo(
@@ -172,7 +169,12 @@ const ProfileEditorPage = () => {
       await dispatch(upsertAgentProfile(profile)).unwrap();
       if (mountedRef.current) backToList();
     } catch (err) {
-      if (mountedRef.current) setError(err instanceof Error ? err.message : String(err));
+      // `.unwrap()` rejects with Redux Toolkit's SerializedError — a plain
+      // object, not an `Error` — so an `instanceof` guard here rendered
+      // "[object Object]" and hid the backend's reason (#5900).
+      if (mountedRef.current) {
+        setError(errorMessage(err, 'Failed to save profile'));
+      }
     } finally {
       if (mountedRef.current) setSubmitting(false);
     }
