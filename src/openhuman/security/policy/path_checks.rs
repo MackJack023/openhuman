@@ -205,14 +205,19 @@ impl SecurityPolicy {
     /// during early startup or in tests where the workspace doesn't exist on
     /// disk), matching the inline behavior the callers used before the cache.
     pub(super) async fn workspace_root(&self) -> PathBuf {
+        if let Some(cached) = self.canonical_workspace.get() {
+            return cached.clone();
+        }
+        let Ok(canonical) = tokio::fs::canonicalize(&self.workspace_dir).await else {
+            // Do not cache a spelling that was only a fallback while the
+            // workspace was absent. It may later appear through a symlink.
+            return self.workspace_dir.clone();
+        };
+        let _ = self.canonical_workspace.set(canonical.clone());
         self.canonical_workspace
-            .get_or_init(|| async {
-                tokio::fs::canonicalize(&self.workspace_dir)
-                    .await
-                    .unwrap_or_else(|_| self.workspace_dir.clone())
-            })
-            .await
-            .clone()
+            .get()
+            .cloned()
+            .unwrap_or(canonical)
     }
 
     /// Synchronous counterpart to [`workspace_root`], hydrating the **same**
@@ -253,10 +258,11 @@ impl SecurityPolicy {
         if let Some(cached) = self.canonical_workspace.get() {
             return cached.clone();
         }
-        let canonical = self
-            .workspace_dir
-            .canonicalize()
-            .unwrap_or_else(|_| self.workspace_dir.clone());
+        let Ok(canonical) = self.workspace_dir.canonicalize() else {
+            // Do not cache a spelling that was only a fallback while the
+            // workspace was absent. It may later appear through a symlink.
+            return self.workspace_dir.clone();
+        };
         // Deliberately ignoring the result: a failed `set` means the async
         // initializer won the race, and what it stored equals `canonical` —
         // see the equivalence argument above.
@@ -332,16 +338,6 @@ impl SecurityPolicy {
         let workspace_root = self.workspace_root().await;
         self.check_resolved_against_forbidden(&full_path, &workspace_root)?;
 
-        // Classify a missing workspace after protected-path checks, but before
-        // ancestor containment: the existing ancestor may be the workspace's
-        // parent, which would otherwise produce a misleading escape diagnosis.
-        if !self.workspace_dir.is_dir() && self.is_path_under_workspace(&full_path) {
-            return Err(format!(
-                "{POLICY_BLOCKED_MARKER} {WORKSPACE_MISSING_MARKER} Workspace directory does not exist: {}. Nothing can be written until it is created; this is not a path-traversal refusal.",
-                self.workspace_dir.display()
-            ));
-        }
-
         // Walk up to the deepest existing ancestor so we can canonicalize without
         // requiring the full parent path to exist yet. This catches symlink escapes
         // in existing path components even when deeper dirs are not created yet.
@@ -358,6 +354,21 @@ impl SecurityPolicy {
         let canonical_ancestor = tokio::fs::canonicalize(&existing_ancestor)
             .await
             .map_err(|e| format!("Failed to resolve parent of '{path}': {e}"))?;
+        // Diagnose the real ancestor before the missing-workspace branch. A
+        // missing suffix can hide a symlink to a protected root (for example
+        // `/allowed/link -> /etc` with workspace `/allowed/link/new`).
+        self.check_resolved_against_forbidden(&canonical_ancestor, &workspace_root)?;
+
+        // Classify a missing workspace after protected-path checks, but before
+        // ancestor containment: the existing ancestor may be the workspace's
+        // parent, which would otherwise produce a misleading escape diagnosis.
+        if !self.workspace_dir.is_dir() && self.is_path_under_workspace(&full_path) {
+            return Err(format!(
+                "{POLICY_BLOCKED_MARKER} {WORKSPACE_MISSING_MARKER} Workspace directory does not exist: {}. Nothing can be written until it is created; this is not a path-traversal refusal.",
+                self.workspace_dir.display()
+            ));
+        }
+
         if !self.is_resolved_path_allowed_for(&canonical_ancestor, true) {
             return Err(format!(
                 "{POLICY_BLOCKED_MARKER} Resolved parent path escapes workspace: {}",

@@ -79,3 +79,50 @@ async fn validate_parent_path_uses_same_cache_as_validate_path() {
         .unwrap();
     assert_eq!(policy.canonical_workspace.get(), Some(&cached));
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn missing_workspace_does_not_cache_unresolved_symlink_spelling() {
+    let parent = tempfile::tempdir().unwrap();
+    let target = parent.path().join("target");
+    std::fs::create_dir(&target).unwrap();
+    let link = parent.path().join("link");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let workspace = link.join("workspace");
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.clone(),
+        action_dir: workspace.clone(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+
+    let err = policy.validate_parent_path("new.txt").await.unwrap_err();
+    assert!(err.contains(WORKSPACE_MISSING_MARKER), "err: {err}");
+    assert!(policy.canonical_workspace.get().is_none());
+
+    std::fs::create_dir(&workspace).unwrap();
+    assert!(policy.validate_parent_path("new.txt").await.is_ok());
+    let canonical_workspace = workspace.canonicalize().unwrap();
+    assert_eq!(policy.canonical_workspace.get(), Some(&canonical_workspace));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn missing_workspace_under_protected_symlink_is_not_repairable() {
+    let parent = tempfile::tempdir().unwrap();
+    let link = parent.path().join("link");
+    std::os::unix::fs::symlink("/etc", &link).unwrap();
+    let workspace = link.join("missing-workspace");
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.clone(),
+        action_dir: workspace,
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+
+    let err = policy.validate_parent_path("new.txt").await.unwrap_err();
+    assert!(!err.contains(WORKSPACE_MISSING_MARKER), "err: {err}");
+    assert!(err.contains("protected"), "err: {err}");
+}
