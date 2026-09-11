@@ -219,9 +219,8 @@ fn missing_workspace_block_suggests_workspace_repair_not_more_autonomy() {
 
 #[test]
 fn workspace_marker_only_classifies_a_prefixed_reason() {
-    let raw = format!(
-        "{POLICY_BLOCKED_MARKER} unrelated failure mentions {WORKSPACE_MISSING_MARKER}"
-    );
+    let raw =
+        format!("{POLICY_BLOCKED_MARKER} unrelated failure mentions {WORKSPACE_MISSING_MARKER}");
     let msg = PolicyDenial::SecurityPolicyBlocked {
         tool: "write_file",
         raw_reason: &raw,
