@@ -184,8 +184,8 @@ fn learning_subscriber_registration_is_idempotent_after_success() {
 /// token is *not* consumed, and a later call can still claim it. The
 /// consumed/not-consumed transitions are pinned above through
 /// `group_first_time_when_bus_ready`.
-#[test]
-fn domain_subscriber_registration_wrapper_defers_without_a_global_bus() {
+#[tokio::test]
+async fn domain_subscriber_registration_wrapper_defers_without_a_global_bus() {
     use crate::core::all::DomainGroup;
 
     assert!(crate::core::bus::BUS.get().is_none());
