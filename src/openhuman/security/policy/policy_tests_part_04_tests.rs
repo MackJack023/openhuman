@@ -304,10 +304,7 @@ async fn validate_parent_path_preserves_protected_root_diagnosis_when_workspace_
         .validate_parent_path("newfile.txt")
         .await
         .expect_err("protected roots must remain forbidden");
-    assert!(
-        err.contains("protected"),
-        "err: {err}"
-    );
+    assert!(err.contains("protected"), "err: {err}");
     assert!(!err.contains(WORKSPACE_MISSING_MARKER), "err: {err}");
 }
 
