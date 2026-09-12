@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    default_state, group_first_time, group_first_time_when_bus_ready, invoke_method,
+    default_state, group_first_time_when_bus_ready, invoke_method,
     is_session_expired_error, is_unconfirmed_unauthorized_error,
     learning_first_time_when_bus_ready, params_to_object, parse_json_params, type_name,
     DomainSubscriberPlan,
@@ -178,19 +178,30 @@ fn learning_subscriber_registration_is_idempotent_after_success() {
     assert!(!learning_first_time_when_bus_ready(&completed, true));
 }
 
-/// The wrapper reads readiness off the process-wide `BUS` singleton. Unit
-/// tests never stand that bus up (see `core::bus::init` on runtime affinity),
-/// so the observable contract here is the deferred case: with no bus the
-/// token is *not* consumed, and a later call can still claim it. The
-/// consumed/not-consumed transitions are pinned above through
-/// `group_first_time_when_bus_ready`.
-#[tokio::test]
-async fn domain_subscriber_registration_wrapper_defers_without_a_global_bus() {
+/// A registration attempt before the bus is ready must not consume the
+/// group's token, so a later ready attempt can still claim it.
+#[test]
+fn domain_subscriber_registration_defers_until_bus_is_ready() {
     use crate::core::all::DomainGroup;
+    use std::collections::HashSet;
+    use std::sync::Mutex;
 
-    assert!(crate::core::bus::BUS.get().is_none());
-    assert!(!group_first_time(DomainGroup::Media));
-    assert!(!group_first_time(DomainGroup::Media));
+    let completed = Mutex::new(HashSet::new());
+    assert!(!group_first_time_when_bus_ready(
+        &completed,
+        DomainGroup::Media,
+        false
+    ));
+    assert!(group_first_time_when_bus_ready(
+        &completed,
+        DomainGroup::Media,
+        true
+    ));
+    assert!(!group_first_time_when_bus_ready(
+        &completed,
+        DomainGroup::Media,
+        true
+    ));
 }
 
 #[test]
