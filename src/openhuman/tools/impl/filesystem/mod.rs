@@ -43,6 +43,26 @@ pub(super) async fn create_validated_parent_dirs(
     policy: &SecurityPolicy,
     parent: &Path,
 ) -> std::io::Result<()> {
+    // `validate_parent_path` may have resolved a symlinked workspace into a
+    // trusted ancestor. If that workspace disappears before this helper runs,
+    // checking only the raw spelling below would miss the canonical path and
+    // `create_dir_all` could recreate it through the ancestor. The cached root
+    // binds this operation to the workspace identity observed during
+    // validation.
+    if let Some(validated_root) = policy.canonical_workspace.get() {
+        if parent.starts_with(validated_root) {
+            match tokio::fs::canonicalize(&policy.workspace_dir).await {
+                Ok(current_root) if current_root == *validated_root => {}
+                _ => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "validated workspace no longer exists",
+                    ));
+                }
+            }
+        }
+    }
+
     let workspace_root = match tokio::fs::canonicalize(&policy.workspace_dir).await {
         Ok(root) => root,
         Err(error) => {
