@@ -66,7 +66,10 @@ pub(super) async fn create_validated_parent_dirs(
                 if !tokio::fs::metadata(&current).await?.is_dir() {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::AlreadyExists,
-                        format!("validated parent component is not a directory: {}", current.display()),
+                        format!(
+                            "validated parent component is not a directory: {}",
+                            current.display()
+                        ),
                     ));
                 }
             }
