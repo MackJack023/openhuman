@@ -17,6 +17,7 @@ mod write_sink;
 
 use crate::openhuman::security::policy::{TrustedAccess, TrustedRoot};
 use crate::openhuman::security::SecurityPolicy;
+use std::path::Path;
 use tinytools::ToolRunContext;
 
 #[cfg(test)]
@@ -29,6 +30,51 @@ mod tests;
 /// and `git_operations` cannot drift into two different answers about which
 /// config keys are dangerous.
 pub(crate) use git_operations_config::SHELL_NEUTRALISED_CONFIG;
+
+/// Create missing parent directories without allowing a workspace that was
+/// removed after validation to be recreated by `create_dir_all`.
+///
+/// Workspace paths are created one component at a time from their already
+/// canonical root. If that root disappears between validation and this
+/// operation, creating the first missing child fails instead of silently
+/// rebuilding the workspace beneath a trusted ancestor. Trusted roots that
+/// are outside the workspace retain the normal recursive-create behavior.
+pub(super) async fn create_validated_parent_dirs(
+    policy: &SecurityPolicy,
+    parent: &Path,
+) -> std::io::Result<()> {
+    let workspace_root = match tokio::fs::canonicalize(&policy.workspace_dir).await {
+        Ok(root) => root,
+        Err(error) => {
+            if parent.starts_with(&policy.workspace_dir) {
+                return Err(error);
+            }
+            return tokio::fs::create_dir_all(parent).await;
+        }
+    };
+
+    let Some(relative) = parent.strip_prefix(&workspace_root).ok() else {
+        return tokio::fs::create_dir_all(parent).await;
+    };
+
+    let mut current = workspace_root;
+    for component in relative.components() {
+        current.push(component);
+        match tokio::fs::create_dir(&current).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !tokio::fs::metadata(&current).await?.is_dir() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        format!("validated parent component is not a directory: {}", current.display()),
+                    ));
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
 
 pub use apply_patch::ApplyPatchTool;
 pub use csv_export::CsvExportTool;
