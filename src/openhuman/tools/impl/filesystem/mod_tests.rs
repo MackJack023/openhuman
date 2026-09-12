@@ -34,6 +34,33 @@ fn policy_rooted_at(home: &Path) -> SecurityPolicy {
 }
 
 #[tokio::test]
+async fn validated_parent_is_not_recreated_after_workspace_removal() {
+    let root = tempfile::tempdir().expect("root");
+    let workspace = root.path().join("workspace");
+    std::fs::create_dir(&workspace).expect("workspace");
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.clone(),
+        action_dir: workspace.clone(),
+        workspace_only: true,
+        forbidden_paths: Vec::new(),
+        ..SecurityPolicy::default()
+    };
+
+    let resolved = policy
+        .validate_parent_path("nested/new.txt")
+        .await
+        .expect("initial validation");
+    let parent = resolved.parent().expect("resolved parent");
+    std::fs::remove_dir_all(&workspace).expect("remove workspace");
+
+    let error = create_validated_parent_dirs(&policy, parent)
+        .await
+        .expect_err("removed workspace must not be recreated");
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    assert!(!workspace.exists());
+}
+
+#[tokio::test]
 async fn descriptor_root_outside_workspace_is_readable_and_writable() {
     let home = tempfile::tempdir().expect("home");
     let project = tempfile::tempdir().expect("project");
